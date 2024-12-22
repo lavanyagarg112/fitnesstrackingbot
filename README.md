@@ -33,7 +33,7 @@ This project is a private Telegram bot designed to help users track their fitnes
    - **People**: To store names of users.
    - **Goals**: To manage fitness goals.
    - **Weekly Summary**: To store weekly summaries.
-2. [Optional] Refer to the provided `sample_sheet.xlsx` in the repository for an example structure.
+2. [Optional] Download `sample_sheet.xlsx` in the repository for an example structure.
 
 #### Sample Sheet
 - For daily tracker sheet, the Date and Name column is compulsory, other columns are based on what you want to track
