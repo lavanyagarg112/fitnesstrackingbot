@@ -137,7 +137,18 @@ async def add_new_person(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         args = ' '.join(context.args)
         if not args:
-            await update.message.reply_text("Usage: /addnewperson <name>")
+            # Modified to use inline dropdown
+            service = get_sheet_service()
+            sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+            people_data = sheet.get('values', [])
+
+            if not people_data:
+                await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
+                return
+
+            keyboard = [[InlineKeyboardButton(name[0], callback_data=name[0])] for name in people_data]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Select a name to add:", reply_markup=reply_markup)
             return
 
         service = get_sheet_service()
@@ -207,7 +218,17 @@ async def weekly_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         name = ' '.join(context.args)
         if not name:
-            await update.message.reply_text("Usage: /weekly <name>")
+            service = get_sheet_service()
+            sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+            people_data = sheet.get('values', [])
+
+            if not people_data:
+                await update.message.reply_text("No names found. Please add names first.")
+                return
+
+            keyboard = [[InlineKeyboardButton(name[0], callback_data=f"weekly_{name[0]}")] for name in people_data]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Select a name to view weekly stats:", reply_markup=reply_markup)
             return
 
         service = get_sheet_service()
@@ -224,40 +245,21 @@ async def weekly_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 SELECT_NAME_GOALS, ADD_GOAL_NAME, ADD_GOAL_DESCRIPTION, SELECT_GOAL_TO_EDIT, EDIT_GOAL_DESCRIPTION = range(5)
 
-from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
-from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
-from googleapiclient.discovery import build
-from google.oauth2.service_account import Credentials
-from dotenv import load_dotenv
-from datetime import datetime
-import os
-
-# Load environment variables
-load_dotenv()
-
-# Environment variables
-TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
-CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
-SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
-
-# Google Sheets Service
-def get_sheet_service():
-    credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
-    return build('sheets', 'v4', credentials=credentials).spreadsheets()
-
-# Helper function to handle empty data
-def ensure_sheet_data(sheet, range):
-    data = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=range).execute().get('values', [])
-    return data if data else [[]]
-
-# Conversation states
-SELECT_NAME_GOALS, ADD_GOAL_NAME, ADD_GOAL_DESCRIPTION, SELECT_GOAL_TO_EDIT, EDIT_GOAL_DESCRIPTION = range(5)
-
 async def view_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         name = ' '.join(context.args)
         if not name:
-            await update.message.reply_text("Usage: /viewgoals <name>")
+            service = get_sheet_service()
+            sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+            people_data = sheet.get('values', [])
+
+            if not people_data:
+                await update.message.reply_text("No names found. Please add names first.")
+                return
+
+            keyboard = [[InlineKeyboardButton(name[0], callback_data=f"viewgoals_{name[0]}")] for name in people_data]
+            reply_markup = InlineKeyboardMarkup(keyboard)
+            await update.message.reply_text("Select a name to view goals:", reply_markup=reply_markup)
             return
 
         service = get_sheet_service()
@@ -427,6 +429,47 @@ async def finalize_edit_goal(update: Update, context: ContextTypes.DEFAULT_TYPE)
 
     return ConversationHandler.END
 
+async def handle_weekly_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    name = query.data.replace("weekly_", "")
+    
+    service = get_sheet_service()
+    sheet = ensure_sheet_data(service, "Weekly Summary!A1:Z")
+
+    stats = [row for row in sheet[1:] if row[1] == name]
+    if not stats:
+        await query.message.reply_text(f"No stats found for {name}.")
+        return
+
+    await query.message.reply_text(f"Weekly Stats for {name}:\n" + "\n".join([', '.join(row) for row in stats]))
+
+async def handle_viewgoals_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    name = query.data.replace("viewgoals_", "")
+    
+    service = get_sheet_service()
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Goals!A1:Z").execute()
+    data = sheet.get('values', [])
+
+    if not data or len(data) < 2:
+        await query.message.reply_text(f"No goals found for {name}.")
+        return
+
+    headers = data[0]
+    goals = [dict(zip(headers, row)) for row in data[1:] if row[0] == name]
+
+    if not goals:
+        await query.message.reply_text(f"No goals found for {name}.")
+        return
+
+    response = f"Goals for {name}:\n"
+    for goal in goals:
+        response += "\n".join(f"{key}: {value}" for key, value in goal.items() if value)
+        response += "\n---\n"
+
+    await query.message.reply_text(response.strip())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
@@ -442,7 +485,7 @@ Here are the available commands:
 /start - Start the bot and get a welcome message
 /help - Show this help message
 /addnewperson - Add a new person to the fitness tracking sheet
-/viewtoday - View today's stats for a person
+/viewtoday - View today's stats for all people
 /addcolumns - Add a new column to the sheet
 /update - Update today's data for a person
 /weekly - View weekly stats for a person
@@ -482,14 +525,12 @@ def main():
         states={
             SELECT_GOAL_TO_EDIT: [CallbackQueryHandler(select_goal_to_edit)],
             EDIT_GOAL_DESCRIPTION: [
-                CallbackQueryHandler(edit_goal_description),  # For selecting the goal
-                MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_edit_goal),  # For entering the updated description
+                CallbackQueryHandler(edit_goal_description),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_edit_goal),
             ],
         },
         fallbacks=[CommandHandler("cancel", cancel)],
     )
-
-
 
     # Register Commands
     application.add_handler(CommandHandler("start", start))
@@ -502,6 +543,8 @@ def main():
     application.add_handler(add_goal_conv_handler)
     application.add_handler(edit_goal_conv_handler)
     application.add_handler(update_conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
+    application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
 
     # Start the Bot
     application.run_polling()
