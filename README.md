@@ -138,6 +138,10 @@ Weekly summaries are generated automatically using data from the `Weekly Summary
    - Ensure you have Python 3.8+.
    - Run `pip install -r requirements.txt` to install missing packages.
 
+4. **Not Authorized to Use the Bot**:
+   - Ensure that you have set your ADMIN_ID correctly.
+   - Ensure that you have followed the steps in [Configure `.env` File Section](#step-5-configure-env-file)
+
 ---
 
 ## Disclaimer
