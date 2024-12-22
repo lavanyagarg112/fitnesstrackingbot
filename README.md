@@ -9,7 +9,7 @@ This project is a private Telegram bot designed to help users track their fitnes
 1. **Daily Tracking**: Update and view daily fitness stats.
 2. **Goal Management**: Add, view, and edit fitness goals.
 3. **Weekly Summaries**: Generate weekly summaries of activities.
-4. **Group and Individual Use**: Add the bot to your Telegram group or use it personally.
+4. **Group and Individual Use**: Add the bot to your Telegram group or use it personally. You can use it for either one of them, but not both.
 5. **Secure**: No other chat can access your bot, other than your individual chat or group chat.
 
 ---
