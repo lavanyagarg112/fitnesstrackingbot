@@ -28,17 +28,17 @@ def ensure_sheet_data(sheet, range):
 SELECT_NAME, SELECT_COLUMN, UPDATE_VALUE = range(3)
 
 async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Fetch available names from the sheet
+    # Fetch available names from the Person sheet
     service = get_sheet_service()
-    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A2:B").execute()
-    data = sheet.get('values', [])
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet.get('values', [])
 
-    if not data:
-        await update.message.reply_text("No names found. Please add data first.")
+    if not people_data:
+        await update.message.reply_text("No names found in the People sheet. Please add names first.")
         return ConversationHandler.END
 
-    # Extract unique names
-    names = list(set(row[1] for row in data if len(row) > 1))
+    # Extract names from the People sheet
+    names = [name[0] for name in people_data if len(name) > 0]
 
     # Show names as buttons
     keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
@@ -137,20 +137,8 @@ async def add_new_person(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         args = ' '.join(context.args)
         if not args:
-            # Modified to use inline dropdown
-            service = get_sheet_service()
-            sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
-            people_data = sheet.get('values', [])
-
-            if not people_data:
-                await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
-                return
-
-            keyboard = [[InlineKeyboardButton(name[0], callback_data=name[0])] for name in people_data]
-            reply_markup = InlineKeyboardMarkup(keyboard)
-            await update.message.reply_text("Select a name to add:", reply_markup=reply_markup)
+            await update.message.reply_text("Usage: /addnewperson <name>")
             return
-
         service = get_sheet_service()
         service.values().append(
             spreadsheetId=SPREADSHEET_ID,
