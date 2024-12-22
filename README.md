@@ -52,8 +52,10 @@ This project is a private Telegram bot designed to help users track their fitnes
 4. Navigate to **APIs & Services > Credentials**.
 5. Click **Create Credentials** > **Service Account**.
 6. Fill in the required details and create a JSON key file.
-7. Save the `credentials.json` file securely.
+7. Ideally you would have to give it editor access in order to write to the google sheet.
+8. Save the `credentials.json` file securely.
    - Ensure it is placed in the same folder as `fitness_bot.py`.
+9. Go to your google sheet, and share it with the Service Account email found in the `credentials.json` file. Give it editor access.
 
 ### Step 4: Set Up a Telegram Bot
 
@@ -132,7 +134,7 @@ Weekly summaries are generated automatically using data from the `Weekly Summary
    - Save it as `credentials.json` in the bot's folder.
 
 2. **Google Sheet Permissions**:
-   - Share your Google Sheet with the Service Account email found in the `credentials.json` file.
+   - Share your Google Sheet with the Service Account email found in the `credentials.json` file, with editor access.
 
 3. **Dependencies Issue**:
    - Ensure you have Python 3.8+.
