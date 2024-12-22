@@ -222,6 +222,212 @@ async def weekly_stats(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"Error: {e}")
 
+SELECT_NAME_GOALS, ADD_GOAL_NAME, ADD_GOAL_DESCRIPTION, SELECT_GOAL_TO_EDIT, EDIT_GOAL_DESCRIPTION = range(5)
+
+from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
+from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
+from googleapiclient.discovery import build
+from google.oauth2.service_account import Credentials
+from dotenv import load_dotenv
+from datetime import datetime
+import os
+
+# Load environment variables
+load_dotenv()
+
+# Environment variables
+TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
+CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
+SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
+
+# Google Sheets Service
+def get_sheet_service():
+    credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
+    return build('sheets', 'v4', credentials=credentials).spreadsheets()
+
+# Helper function to handle empty data
+def ensure_sheet_data(sheet, range):
+    data = sheet.values().get(spreadsheetId=SPREADSHEET_ID, range=range).execute().get('values', [])
+    return data if data else [[]]
+
+# Conversation states
+SELECT_NAME_GOALS, ADD_GOAL_NAME, ADD_GOAL_DESCRIPTION, SELECT_GOAL_TO_EDIT, EDIT_GOAL_DESCRIPTION = range(5)
+
+async def view_goals(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        name = ' '.join(context.args)
+        if not name:
+            await update.message.reply_text("Usage: /viewgoals <name>")
+            return
+
+        service = get_sheet_service()
+        sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Goals!A1:Z").execute()
+        data = sheet.get('values', [])
+
+        if not data or len(data) < 2:
+            await update.message.reply_text(f"No goals found for {name}.")
+            return
+
+        headers = data[0]
+        goals = [dict(zip(headers, row)) for row in data[1:] if row[0] == name]
+
+        if not goals:
+            await update.message.reply_text(f"No goals found for {name}.")
+            return
+
+        response = f"Goals for {name}:\n"
+        for goal in goals:
+            response += "\n".join(f"{key}: {value}" for key, value in goal.items() if value)
+            response += "\n---\n"
+
+        await update.message.reply_text(response.strip())
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+async def add_goal_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    service = get_sheet_service()
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet.get('values', [])
+
+    if not people_data:
+        await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
+        return ConversationHandler.END
+
+    names = [row[0] for row in people_data if len(row) > 0]
+    keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select the person for whom you want to add a goal:", reply_markup=reply_markup)
+    return SELECT_NAME_GOALS
+
+async def add_goal_name(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["person_name"] = query.data
+
+    await query.message.reply_text("Please send the name of the new goal.")
+    return ADD_GOAL_NAME
+
+async def add_goal_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    goal_name = update.message.text
+    context.user_data["goal_name"] = goal_name
+
+    await update.message.reply_text("Please send the description for this goal.")
+    return ADD_GOAL_DESCRIPTION
+
+async def finalize_goal_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    goal_description = update.message.text
+    person_name = context.user_data.get("person_name")
+    goal_name = context.user_data.get("goal_name")
+
+    try:
+        service = get_sheet_service()
+        sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Goals!A1:Z").execute()
+        data = sheet.get('values', [])
+
+        if not data:
+            headers = ["Name", "Goal Name", "Description"]
+            data = [headers]
+
+        headers = data[0]
+        new_row = ["" for _ in headers]
+        new_row[0] = person_name
+        new_row[1] = goal_name
+        new_row[2] = goal_description
+
+        data.append(new_row)
+
+        service.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Goals!A1:Z",
+            valueInputOption="RAW",
+            body={"values": data}
+        ).execute()
+
+        await update.message.reply_text(f"Goal '{goal_name}' added for {person_name}.")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+    return ConversationHandler.END
+
+async def edit_goal_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    service = get_sheet_service()
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet.get('values', [])
+
+    if not people_data:
+        await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
+        return ConversationHandler.END
+
+    names = [row[0] for row in people_data if len(row) > 0]
+    keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select the person whose goal you want to edit:", reply_markup=reply_markup)
+    return SELECT_GOAL_TO_EDIT
+
+async def select_goal_to_edit(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["person_name"] = query.data
+
+    service = get_sheet_service()
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Goals!A1:Z").execute()
+    data = sheet.get('values', [])
+
+    goals = [row for row in data[1:] if row[0] == query.data]
+
+    if not goals:
+        await query.message.reply_text(f"No goals found for {query.data}.")
+        return ConversationHandler.END
+
+    keyboard = [[InlineKeyboardButton(row[1], callback_data=row[1])] for row in goals]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.message.reply_text("Select the goal to edit:", reply_markup=reply_markup)
+    return EDIT_GOAL_DESCRIPTION
+
+async def edit_goal_description(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["goal_name"] = query.data
+
+    await query.message.reply_text("Please send the updated description for this goal:")
+    return EDIT_GOAL_DESCRIPTION
+
+async def finalize_edit_goal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    updated_description = update.message.text
+    person_name = context.user_data.get("person_name")
+    goal_name = context.user_data.get("goal_name")
+
+    try:
+        service = get_sheet_service()
+        sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Goals!A1:Z").execute()
+        data = sheet.get('values', [])
+
+        headers = data[0]
+        goal_index = next((i for i, row in enumerate(data[1:], start=1) if row[0] == person_name and row[1] == goal_name), None)
+
+        if goal_index is None:
+            await update.message.reply_text(f"Goal '{goal_name}' for {person_name} not found.")
+            return ConversationHandler.END
+
+        while len(data[goal_index]) < len(headers):
+            data[goal_index].append("")
+
+        data[goal_index][2] = updated_description
+
+        service.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Goals!A1:Z",
+            valueInputOption="RAW",
+            body={"values": data}
+        ).execute()
+
+        await update.message.reply_text(f"Goal '{goal_name}' for {person_name} updated successfully.")
+    except Exception as e:
+        await update.message.reply_text(f"Error: {e}")
+
+    return ConversationHandler.END
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "\U0001F44B Welcome to the Fitness Tracking Bot! \U0001F3CB\n\n"
@@ -240,6 +446,10 @@ Here are the available commands:
 /addcolumns - Add a new column to the sheet
 /update - Update today's data for a person
 /weekly - View weekly stats for a person
+/viewgoals - View goals for a person
+/addgoal - Add a new goal for a person
+/editgoal - Edit an existing goal for a person
+/cancel - Cancel current operation
 """
     )
 
@@ -257,6 +467,30 @@ def main():
         fallbacks=[CommandHandler("cancel", cancel)],
     )
 
+    add_goal_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("addgoal", add_goal_start)],
+        states={
+            SELECT_NAME_GOALS: [CallbackQueryHandler(add_goal_name)],
+            ADD_GOAL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_goal_description)],
+            ADD_GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_goal_description)],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    edit_goal_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("editgoal", edit_goal_start)],
+        states={
+            SELECT_GOAL_TO_EDIT: [CallbackQueryHandler(select_goal_to_edit)],
+            EDIT_GOAL_DESCRIPTION: [
+                CallbackQueryHandler(edit_goal_description),  # For selecting the goal
+                MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_edit_goal),  # For entering the updated description
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+
+
     # Register Commands
     application.add_handler(CommandHandler("start", start))
     application.add_handler(CommandHandler("help", help_command))
@@ -264,6 +498,9 @@ def main():
     application.add_handler(CommandHandler("viewtoday", view_today))
     application.add_handler(CommandHandler("addcolumns", add_columns))
     application.add_handler(CommandHandler("weekly", weekly_stats))
+    application.add_handler(CommandHandler("viewgoals", view_goals))
+    application.add_handler(add_goal_conv_handler)
+    application.add_handler(edit_goal_conv_handler)
     application.add_handler(update_conv_handler)
 
     # Start the Bot
