@@ -12,7 +12,7 @@ load_dotenv()
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
-CHAT_ID = os.getenv('CHAT_ID')
+ADMIN_ID = os.getenv('ADMIN_ID')
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -23,6 +23,14 @@ def ensure_sheet_data(sheet, range):
     return data if data else [[]]
 
 SELECT_NAME, SELECT_COLUMN, UPDATE_VALUE = range(3)
+
+async def get_user_id(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type == "private":
+        user_id = update.effective_user.id
+        await update.message.reply_text(f"Your user ID is: {user_id}")
+    else:
+        await update.message.reply_text("This command can only be used in private chats to set up the bot.")
+    return
 
 async def update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service = get_sheet_service()
@@ -441,9 +449,6 @@ async def handle_viewgoals_callback(update: Update, context: ContextTypes.DEFAUL
    await query.message.reply_text(response.strip())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-   if update.message.chat.id != CHAT_ID:
-         await update.message.reply_text("You are not authorized to use this bot.")
-         return
    await update.message.reply_text(
        "\U0001F44B Welcome to the Fitness Tracking Bot! \U0001F3CB\n\n"
        "Here to help you track your fitness journey effortlessly.\n"
@@ -472,12 +477,22 @@ def require_auth():
     def decorator(func):
         @wraps(func)
         async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
-            if update.effective_chat.id != int(CHAT_ID):
-                await update.message.reply_text("You are not authorized to use this bot.")
-                return ConversationHandler.END if isinstance(func, ConversationHandler) else None
+            chat_id = update.effective_chat.id
+            user_id = update.effective_user.id
+            
+            if update.effective_chat.type == "private":
+                if user_id != ADMIN_ID:
+                    await update.message.reply_text("You are not authorized to use this bot.")
+                    return ConversationHandler.END if isinstance(func, ConversationHandler) else None
+            else:
+                if chat_id != ADMIN_ID:
+                    await update.message.reply_text("This bot is not authorized in this group.")
+                    return ConversationHandler.END if isinstance(func, ConversationHandler) else None
+
             return await func(update, context, *args, **kwargs)
         return wrapped
     return decorator
+
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
@@ -527,6 +542,8 @@ def main():
     application.add_handler(update_conv_handler)
     application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
+
+    application.add_handler(CommandHandler("getuserid", get_user_id))
 
     application.run_polling()
 
