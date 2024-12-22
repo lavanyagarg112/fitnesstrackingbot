@@ -22,7 +22,7 @@ This project is a private Telegram bot designed to help users track their fitnes
 2. **Google Account**: Required for Google Sheets and Google Cloud Console.
 3. **Telegram Account**: To create a bot using BotFather.
 
-### Step 1: Clone or Download the Repository
+### Step 1: Download the source code
 
 1. Go to the [releases page](https://github.com/lavanyagarg112/fitnesstracking/releases) and download the latest release as a ZIP file.
 2. Extract the ZIP file to a folder on your machine.
