@@ -481,11 +481,11 @@ def require_auth():
             user_id = update.effective_user.id
             
             if update.effective_chat.type == "private":
-                if user_id != ADMIN_ID:
+                if str(user_id) != str(ADMIN_ID):
                     await update.message.reply_text("You are not authorized to use this bot.")
                     return ConversationHandler.END if isinstance(func, ConversationHandler) else None
             else:
-                if chat_id != ADMIN_ID:
+                if str(chat_id) != str(ADMIN_ID):
                     await update.message.reply_text("This bot is not authorized in this group.")
                     return ConversationHandler.END if isinstance(func, ConversationHandler) else None
 
