@@ -5,12 +5,14 @@ from google.oauth2.service_account import Credentials
 from dotenv import load_dotenv
 from datetime import datetime
 import os
+from functools import wraps
 
 load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
+CHAT_ID = os.getenv('CHAT_ID')
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -439,6 +441,9 @@ async def handle_viewgoals_callback(update: Update, context: ContextTypes.DEFAUL
    await query.message.reply_text(response.strip())
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+   if update.message.chat.id != CHAT_ID:
+         await update.message.reply_text("You are not authorized to use this bot.")
+         return
    await update.message.reply_text(
        "\U0001F44B Welcome to the Fitness Tracking Bot! \U0001F3CB\n\n"
        "Here to help you track your fitness journey effortlessly.\n"
@@ -463,55 +468,67 @@ Here are the available commands:
 """
    )
 
+def require_auth():
+    def decorator(func):
+        @wraps(func)
+        async def wrapped(update: Update, context: ContextTypes.DEFAULT_TYPE, *args, **kwargs):
+            if update.effective_chat.id != int(CHAT_ID):
+                await update.message.reply_text("You are not authorized to use this bot.")
+                return ConversationHandler.END if isinstance(func, ConversationHandler) else None
+            return await func(update, context, *args, **kwargs)
+        return wrapped
+    return decorator
 def main():
-   application = Application.builder().token(TELEGRAM_TOKEN).build()
+    application = Application.builder().token(TELEGRAM_TOKEN).build()
+    
+    # Apply decorator to all command handlers
+    update_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("update", require_auth()(update_start))],
+        states={
+            SELECT_NAME: [CallbackQueryHandler(select_name)],
+            SELECT_COLUMN: [CallbackQueryHandler(select_column)],
+            UPDATE_VALUE: [CommandHandler("cancel", require_auth()(cancel)), 
+                         MessageHandler(filters.TEXT & ~filters.COMMAND, update_value)],
+        },
+        fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+    )
 
-   update_conv_handler = ConversationHandler(
-       entry_points=[CommandHandler("update", update_start)],
-       states={
-           SELECT_NAME: [CallbackQueryHandler(select_name)],
-           SELECT_COLUMN: [CallbackQueryHandler(select_column)],
-           UPDATE_VALUE: [CommandHandler("cancel", cancel), MessageHandler(filters.TEXT & ~filters.COMMAND, update_value)],
-       },
-       fallbacks=[CommandHandler("cancel", cancel)],
-   )
+    add_goal_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("addgoal", require_auth()(add_goal_start))],
+        states={
+            SELECT_NAME_GOALS: [CallbackQueryHandler(add_goal_name)],
+            ADD_GOAL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_goal_description)],
+            ADD_GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_goal_description)],
+        },
+        fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+    )
 
-   add_goal_conv_handler = ConversationHandler(
-       entry_points=[CommandHandler("addgoal", add_goal_start)],
-       states={
-           SELECT_NAME_GOALS: [CallbackQueryHandler(add_goal_name)],
-           ADD_GOAL_NAME: [MessageHandler(filters.TEXT & ~filters.COMMAND, add_goal_description)],
-           ADD_GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_goal_description)],
-       },
-       fallbacks=[CommandHandler("cancel", cancel)],
-   )
+    edit_goal_conv_handler = ConversationHandler(
+        entry_points=[CommandHandler("editgoal", require_auth()(edit_goal_start))],
+        states={
+            SELECT_GOAL_TO_EDIT: [CallbackQueryHandler(select_goal_to_edit)],
+            EDIT_GOAL_DESCRIPTION: [
+                CallbackQueryHandler(edit_goal_description),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_edit_goal),
+            ],
+        },
+        fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+    )
 
-   edit_goal_conv_handler = ConversationHandler(
-       entry_points=[CommandHandler("editgoal", edit_goal_start)],
-       states={
-           SELECT_GOAL_TO_EDIT: [CallbackQueryHandler(select_goal_to_edit)],
-           EDIT_GOAL_DESCRIPTION: [
-               CallbackQueryHandler(edit_goal_description),
-               MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_edit_goal),
-           ],
-       },
-       fallbacks=[CommandHandler("cancel", cancel)],
-   )
+    application.add_handler(CommandHandler("start", require_auth()(start)))
+    application.add_handler(CommandHandler("help", require_auth()(help_command)))
+    application.add_handler(CommandHandler("addnewperson", require_auth()(add_new_person)))
+    application.add_handler(CommandHandler("viewtoday", require_auth()(view_today)))
+    application.add_handler(CommandHandler("addcolumns", require_auth()(add_columns)))
+    application.add_handler(CommandHandler("weekly", require_auth()(weekly_stats)))
+    application.add_handler(CommandHandler("viewgoals", require_auth()(view_goals)))
+    application.add_handler(add_goal_conv_handler)
+    application.add_handler(edit_goal_conv_handler)
+    application.add_handler(update_conv_handler)
+    application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
+    application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
 
-   application.add_handler(CommandHandler("start", start))
-   application.add_handler(CommandHandler("help", help_command))
-   application.add_handler(CommandHandler("addnewperson", add_new_person))
-   application.add_handler(CommandHandler("viewtoday", view_today))
-   application.add_handler(CommandHandler("addcolumns", add_columns))
-   application.add_handler(CommandHandler("weekly", weekly_stats))
-   application.add_handler(CommandHandler("viewgoals", view_goals))
-   application.add_handler(add_goal_conv_handler)
-   application.add_handler(edit_goal_conv_handler)
-   application.add_handler(update_conv_handler)
-   application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
-   application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
-
-   application.run_polling()
+    application.run_polling()
 
 if __name__ == "__main__":
    main()
