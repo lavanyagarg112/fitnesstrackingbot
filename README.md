@@ -10,6 +10,7 @@ This project is a private Telegram bot designed to help users track their fitnes
 2. **Goal Management**: Add, view, and edit fitness goals.
 3. **Weekly Summaries**: Generate weekly summaries of activities.
 4. **Group and Individual Use**: Add the bot to your Telegram group or use it personally.
+5. **Secure**: No other chat can access your bot, other than your individual chat or group chat.
 
 ---
 
@@ -69,10 +70,26 @@ This project is a private Telegram bot designed to help users track their fitnes
    TELEGRAM_API_TOKEN=<Your Telegram Bot Token>
    CREDENTIALS_FILE=</path/to/json/credentials.json>
    GOOGLE_SHEET_ID=<Your Google Sheet ID>
+   ADMIN_ID=<your individual or group chat id>
    ```
    - Replace `<Your Telegram Bot Token>` with the token from BotFather.
    - Replace `<Your Google Sheet ID>` with the ID from your Google Sheet URL.
      - Example: If your sheet URL is `https://docs.google.com/spreadsheets/d/abc123/edit`, the ID is `abc123`.
+
+#### Getting the Admin ID (If you are using it for a group)
+1. Go to [telegram web](https://web.telegram.org/)
+2. Open the Group you wish to access
+3. In the url, the last part has the format /#<Chat ID>_<Topic ID>
+4. Thus, you have now obtained your Chat ID
+
+#### Getting the Admin ID (if you are using it for individual use)
+1. You can leave your ADMIN_ID empty for now, or put in a random one digit number.
+2. After your bot is set and running, run the `/getuserid` command on the private chat with the bot. Our application does not store your userid at all.
+3. You will obtain your user id. Set your ADMIN_ID to be this user id.
+4. You can now run your bot!
+
+If you have any alternatives, you can feel free to do so. You can even use some public bots to find your userid straight away!
+
 
 ### Step 6: Install Dependencies
 
