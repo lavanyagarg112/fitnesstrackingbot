@@ -6,8 +6,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
 import asyncio
 
 load_dotenv()
@@ -496,26 +494,8 @@ def require_auth():
         return wrapped
     return decorator
 
-def create_web_app():
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Bot is running')
-        
-        def do_HEAD(self):
-            self.send_response(200)
-            self.end_headers()
-
-    return HTTPServer(('0.0.0.0', int(os.getenv('PORT', '8080'))), Handler)
-
 async def main():
-    # Create and start web server in the event loop
-    web_server = create_web_app()
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, web_server.serve_forever)
-    
-    # Create and start bot
+
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     update_conv_handler = ConversationHandler(
@@ -571,16 +551,24 @@ async def main():
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
-    print("Starting bot...")
-    await application.initialize()
-    await application.start()
-    print("Bot started successfully!")
+    WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL')
+    if not WEBHOOK_URL:
+        print("ERROR: RENDER_EXTERNAL_URL not set!")
+        return
     
-    try:
-        await application.run_polling(drop_pending_updates=True)
-    finally:
-        await application.stop()
-        web_server.shutdown()
+    print(f"Setting webhook to {WEBHOOK_URL}")
+
+    await application.bot.set_webhook(
+        url=f"{WEBHOOK_URL}/webhook",
+        allowed_updates=Update.ALL_TYPES
+    )
+
+    await application.run_webhook(
+        listen="0.0.0.0",
+        port=int(os.getenv('PORT', 10000)),
+        webhook_url=f"{WEBHOOK_URL}/webhook",
+        drop_pending_updates=True
+    )
 
 if __name__ == "__main__":
     asyncio.run(main())
