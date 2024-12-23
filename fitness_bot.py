@@ -6,6 +6,16 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
+import logging
+
+logging.basicConfig(
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    level=logging.DEBUG
+)
+logger = logging.getLogger(__name__)
+
+print("Logger initialized.")
+
 
 load_dotenv()
 
