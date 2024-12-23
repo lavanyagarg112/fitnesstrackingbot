@@ -6,6 +6,8 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import threading
 
 load_dotenv()
 
@@ -493,6 +495,18 @@ def require_auth():
         return wrapped
     return decorator
 
+def run_web_server():
+
+    PORT = int(os.getenv('PORT', '8080'))
+    class Handler(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b'Bot is running')
+
+    server = HTTPServer(('0.0.0.0', PORT), Handler)
+    server.serve_forever()
+
 def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
@@ -544,6 +558,8 @@ def main():
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
 
     application.add_handler(CommandHandler("getuserid", get_user_id))
+
+    threading.Thread(target=run_web_server, daemon=True).start()
 
     application.run_polling()
 
