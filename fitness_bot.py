@@ -510,7 +510,7 @@ def run_web_server():
 async def run_bot():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Apply decorator to all command handlers
+    # Add per_message=True to ConversationHandlers
     update_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("update", require_auth()(update_start))],
         states={
@@ -520,6 +520,7 @@ async def run_bot():
                          MessageHandler(filters.TEXT & ~filters.COMMAND, update_value)],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+        per_message=True
     )
 
     add_goal_conv_handler = ConversationHandler(
@@ -530,6 +531,7 @@ async def run_bot():
             ADD_GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_goal_description)],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+        per_message=True
     )
 
     edit_goal_conv_handler = ConversationHandler(
@@ -542,6 +544,7 @@ async def run_bot():
             ],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+        per_message=True
     )
 
     application.add_handler(CommandHandler("start", require_auth()(start)))
@@ -558,16 +561,32 @@ async def run_bot():
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
-    await application.initialize()
-    await application.start()
-    await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    try:
+        print("Starting bot...")
+        await application.initialize()
+        await application.start()
+        print("Bot started successfully!")
+        await application.run_polling(allowed_updates=Update.ALL_TYPES)
+    finally:
+        print("Stopping bot...")
+        await application.stop()
 
 def main():
+    # Get the current event loop or create a new one
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
     # Start web server in background thread
     threading.Thread(target=run_web_server, daemon=True).start()
     
-    # Run bot in asyncio event loop
-    asyncio.run(run_bot())
+    # Run bot
+    try:
+        loop.run_until_complete(run_bot())
+    finally:
+        loop.close()
 
 if __name__ == "__main__":
     main()
