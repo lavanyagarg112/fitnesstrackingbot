@@ -548,6 +548,7 @@ def main():
     # application.run_polling()
     port = int(os.getenv("PORT", 10000))  # Default to 8443 if PORT is not set
     URL = os.getenv("RENDER_URL")
+    print("Webhook URL being set:", f"{URL}/{TELEGRAM_TOKEN}")
     application.run_webhook(
         listen="0.0.0.0",
         port=port,
