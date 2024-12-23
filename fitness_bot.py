@@ -576,7 +576,8 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(lifespan=lifespan)
 
-@app.get("/")
+@app.get("/", status_code=200)
+@app.head("/", status_code=200)
 async def root():
     return {"status": "Bot is running"}
 
