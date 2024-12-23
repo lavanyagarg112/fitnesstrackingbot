@@ -560,16 +560,18 @@ async def setup_bot():
     
     return application
 
-@app.lifespan("startup")
-async def startup_event():
+@app.lifespan
+async def lifespan(app: FastAPI):
+    # Startup
     app.state.bot = await setup_bot()
     WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL')
     if not WEBHOOK_URL:
         raise RuntimeError("RENDER_EXTERNAL_URL not set!")
     await app.state.bot.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
-
-@app.lifespan("shutdown")
-async def shutdown_event():
+    
+    yield  # This separates startup from shutdown
+    
+    # Shutdown
     if hasattr(app.state, "bot"):
         await app.state.bot.stop()
 
