@@ -8,6 +8,7 @@ import os
 from functools import wraps
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import threading
+import asyncio
 
 load_dotenv()
 
@@ -496,7 +497,6 @@ def require_auth():
     return decorator
 
 def run_web_server():
-
     PORT = int(os.getenv('PORT', '8080'))
     class Handler(BaseHTTPRequestHandler):
         def do_GET(self):
@@ -507,7 +507,7 @@ def run_web_server():
     server = HTTPServer(('0.0.0.0', PORT), Handler)
     server.serve_forever()
 
-def main():
+async def run_bot():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     # Apply decorator to all command handlers
@@ -556,12 +556,18 @@ def main():
     application.add_handler(update_conv_handler)
     application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
-
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
-    threading.Thread(target=run_web_server, daemon=True).start()
+    await application.initialize()
+    await application.start()
+    await application.run_polling(allowed_updates=Update.ALL_TYPES)
 
-    application.run_polling()
+def main():
+    # Start web server in background thread
+    threading.Thread(target=run_web_server, daemon=True).start()
+    
+    # Run bot in asyncio event loop
+    asyncio.run(run_bot())
 
 if __name__ == "__main__":
-   main()
+    main()
