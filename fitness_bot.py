@@ -558,17 +558,17 @@ async def main():
     
     print(f"Setting webhook to {WEBHOOK_URL}")
 
-    await application.bot.set_webhook(
-        url=f"{WEBHOOK_URL}/webhook",
-        allowed_updates=Update.ALL_TYPES
-    )
-
-    await application.run_webhook(
-        listen="0.0.0.0",
-        port=int(os.getenv('PORT', 10000)),
-        webhook_url=f"{WEBHOOK_URL}/webhook",
-        drop_pending_updates=True
-    )
+    await application.initialize()
+    await application.start()
+    await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+    
+    async with application:
+        await application.run_webhook(
+            listen="0.0.0.0",
+            port=int(os.getenv('PORT', 10000)),
+            webhook_url=f"{WEBHOOK_URL}/webhook",
+            drop_pending_updates=True
+        )
 
 if __name__ == "__main__":
     asyncio.run(main())
