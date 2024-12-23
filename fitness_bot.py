@@ -546,7 +546,7 @@ def main():
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
     # application.run_polling()
-    port = int(os.getenv("PORT", 8443))  # Default to 8443 if PORT is not set
+    port = int(os.getenv("PORT", 10000))  # Default to 8443 if PORT is not set
     URL = os.getenv("RENDER_URL")
     application.run_webhook(
         listen="0.0.0.0",
