@@ -7,6 +7,8 @@ from datetime import datetime
 import os
 from functools import wraps
 import asyncio
+from fastapi import FastAPI, Request
+import uvicorn
 
 load_dotenv()
 
@@ -14,6 +16,8 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
 ADMIN_ID = os.getenv('ADMIN_ID')
+
+app = FastAPI()
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -494,8 +498,8 @@ def require_auth():
         return wrapped
     return decorator
 
-async def main():
-
+async def setup_bot():
+    # Create application
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
     update_conv_handler = ConversationHandler(
@@ -551,24 +555,35 @@ async def main():
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
-    WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL')
-    if not WEBHOOK_URL:
-        print("ERROR: RENDER_EXTERNAL_URL not set!")
-        return
-    
-    print(f"Setting webhook to {WEBHOOK_URL}")
-
     await application.initialize()
     await application.start()
-    await application.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     
-    async with application:
-        await application.run_webhook(
-            listen="0.0.0.0",
-            port=int(os.getenv('PORT', 10000)),
-            webhook_url=f"{WEBHOOK_URL}/webhook",
-            drop_pending_updates=True
-        )
+    return application
+
+@app.lifespan("startup")
+async def startup_event():
+    app.state.bot = await setup_bot()
+    WEBHOOK_URL = os.getenv('RENDER_EXTERNAL_URL')
+    if not WEBHOOK_URL:
+        raise RuntimeError("RENDER_EXTERNAL_URL not set!")
+    await app.state.bot.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
+
+@app.lifespan("shutdown")
+async def shutdown_event():
+    if hasattr(app.state, "bot"):
+        await app.state.bot.stop()
+
+@app.get("/")
+async def root():
+    return {"status": "Bot is running"}
+
+@app.post("/webhook")
+async def webhook(request: Request):
+    data = await request.json()
+    update = Update.de_json(data, app.state.bot.bot)
+    await app.state.bot.process_update(update)
+    return {"ok": True}
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    port = int(os.getenv('PORT', 10000))
+    uvicorn.run(app, host="0.0.0.0", port=port)
