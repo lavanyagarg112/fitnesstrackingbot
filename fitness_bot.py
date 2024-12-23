@@ -9,6 +9,7 @@ from functools import wraps
 import asyncio
 from fastapi import FastAPI, Request
 import uvicorn
+from contextlib import asynccontextmanager
 
 load_dotenv()
 
@@ -16,8 +17,6 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
 ADMIN_ID = os.getenv('ADMIN_ID')
-
-app = FastAPI()
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -560,7 +559,7 @@ async def setup_bot():
     
     return application
 
-@app.lifespan
+@asynccontextmanager
 async def lifespan(app: FastAPI):
     # Startup
     app.state.bot = await setup_bot()
@@ -569,11 +568,13 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("RENDER_EXTERNAL_URL not set!")
     await app.state.bot.bot.set_webhook(f"{WEBHOOK_URL}/webhook")
     
-    yield  # This separates startup from shutdown
+    yield
     
     # Shutdown
     if hasattr(app.state, "bot"):
         await app.state.bot.stop()
+
+app = FastAPI(lifespan=lifespan)
 
 @app.get("/")
 async def root():
