@@ -6,9 +6,6 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
-from http.server import HTTPServer, BaseHTTPRequestHandler
-import threading
-import asyncio
 
 load_dotenv()
 
@@ -496,28 +493,10 @@ def require_auth():
         return wrapped
     return decorator
 
-def create_web_app():
-    class Handler(BaseHTTPRequestHandler):
-        def do_GET(self):
-            self.send_response(200)
-            self.end_headers()
-            self.wfile.write(b'Bot is running')
-        
-        def do_HEAD(self):
-            self.send_response(200)
-            self.end_headers()
-
-    return HTTPServer(('0.0.0.0', int(os.getenv('PORT', '8080'))), Handler)
-
-async def main():
-    # Create and start web server in the event loop
-    web_server = create_web_app()
-    loop = asyncio.get_event_loop()
-    await loop.run_in_executor(None, web_server.serve_forever)
-    
-    # Create and start bot
+def main():
     application = Application.builder().token(TELEGRAM_TOKEN).build()
     
+    # Apply decorator to all command handlers
     update_conv_handler = ConversationHandler(
         entry_points=[CommandHandler("update", require_auth()(update_start))],
         states={
@@ -527,8 +506,6 @@ async def main():
                          MessageHandler(filters.TEXT & ~filters.COMMAND, update_value)],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
-        per_chat=True,
-        per_user=True
     )
 
     add_goal_conv_handler = ConversationHandler(
@@ -539,8 +516,6 @@ async def main():
             ADD_GOAL_DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, finalize_goal_description)],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
-        per_chat=True,
-        per_user=True
     )
 
     edit_goal_conv_handler = ConversationHandler(
@@ -553,8 +528,6 @@ async def main():
             ],
         },
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
-        per_chat=True,
-        per_user=True
     )
 
     application.add_handler(CommandHandler("start", require_auth()(start)))
@@ -569,18 +542,10 @@ async def main():
     application.add_handler(update_conv_handler)
     application.add_handler(CallbackQueryHandler(handle_weekly_callback, pattern='^weekly_'))
     application.add_handler(CallbackQueryHandler(handle_viewgoals_callback, pattern='^viewgoals_'))
+
     application.add_handler(CommandHandler("getuserid", get_user_id))
 
-    print("Starting bot...")
-    await application.initialize()
-    await application.start()
-    print("Bot started successfully!")
-    
-    try:
-        await application.run_polling(drop_pending_updates=True)
-    finally:
-        await application.stop()
-        web_server.shutdown()
+    application.run_polling()
 
 if __name__ == "__main__":
-    asyncio.run(main())
+   main()
