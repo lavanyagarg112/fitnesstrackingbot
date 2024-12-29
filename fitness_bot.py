@@ -524,7 +524,7 @@ async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # First message: Instructions
     await query.message.reply_text(
-        "Here’s a template you can use to update your data. Copy it, add or edit the relevant values, and send it back."
+        name + ": Here’s a template you can use to update your data. Copy it, add or edit the relevant values, and send it back."
     )
 
     # Second message: The actual template
