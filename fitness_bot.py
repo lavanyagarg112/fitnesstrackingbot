@@ -583,31 +583,55 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     return ConversationHandler.END
 
 def run_async(coroutine, *args, **kwargs):
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     try:
-        loop.run_until_complete(coroutine(*args, **kwargs))
-    finally:
-        loop.close()
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(coroutine(*args, **kwargs))
 
 def daily_reminder_wrapper(chat_id, context):
-    run_async(daily_reminder, chat_id, context)
+    try:
+        run_async(daily_reminder, chat_id, context)
+    except RuntimeError:
+        # If the event loop is closed, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(daily_reminder(chat_id, context))
+        finally:
+            loop.close()
 
-# Wrapper for water reminder
 def water_reminder_wrapper(chat_id, context):
-    run_async(water_reminder, chat_id, context)
+    try:
+        run_async(water_reminder, chat_id, context)
+    except RuntimeError:
+        # If the event loop is closed, create a new one
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(water_reminder(chat_id, context))
+        finally:
+            loop.close()
 
 async def daily_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="Good evening! Don't forget to update your fitness tracker today. 🏋️‍♂️"
-    )
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Good evening! Don't forget to update your fitness tracker today. 🏋️‍♂️"
+        )
+    except Exception as e:
+        print(f"Error in daily reminder: {e}")
 
 async def water_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
-    await context.bot.send_message(
-        chat_id=chat_id,
-        text="Time to hydrate! Drink some water now. 🥤"
-    )
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Time to hydrate! Drink some water now. 🥤"
+        )
+    except Exception as e:
+        print(f"Error in water reminder: {e}")
 
 async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
@@ -705,7 +729,7 @@ Admin commands:
 /getuserid - Get your user ID
 /cancel - Cancel current operation
 
-You may need to reply to bot's messages in order to reply to the bot, depending on your group settings, \
+You may need to reply to bot's messages explicitly in order to reply to the bot, depending on your group settings, \
 as the bot may not be able to read messages without being replied to.
 """
    )
