@@ -8,9 +8,15 @@ This project is a private Telegram bot designed to help users track their fitnes
 
 1. **Daily Tracking**: Update and view daily fitness stats.
 2. **Goal Management**: Add, view, and edit fitness goals.
-3. **Weekly Summaries**: Generate weekly summaries of activities.
+3. **Weekly Summaries**: Generate weekly statistics of activities.
 4. **Group and Individual Use**: Add the bot to your Telegram group or use it personally. You can use it for either one of them, but not both.
 5. **Secure**: No other chat can access your bot, other than your individual chat or group chat.
+6. **Automated Reminders**: 
+   - Daily reminder at 7 PM to update fitness tracker
+   - Hourly water reminders from 7 AM to 11 PM
+   - Easily start/stop reminders with commands
+7. **Batch Updates**: Update multiple fitness metrics at once using a template-based system.
+8. **Timezone Support**: All reminders and timestamps are based on your configured timezone.
 
 ---
 
@@ -73,10 +79,12 @@ This project is a private Telegram bot designed to help users track their fitnes
    CREDENTIALS_FILE=</path/to/json/credentials.json>
    GOOGLE_SHEET_ID=<Your Google Sheet ID>
    ADMIN_ID=<your individual or group chat id>
+   TIMEZONE=<your timezone>
    ```
    - Replace `<Your Telegram Bot Token>` with the token from BotFather.
    - Replace `<Your Google Sheet ID>` with the ID from your Google Sheet URL.
      - Example: If your sheet URL is `https://docs.google.com/spreadsheets/d/abc123/edit`, the ID is `abc123`.
+   - Example for TIMEZONE is 'Asia/Singapore'. If the given timezone is invalid, the application will default to UTC.
 
 #### Getting the Admin ID (If you are using it for a group)
 1. Go to [telegram web](https://web.telegram.org/)
@@ -143,6 +151,9 @@ Weekly summaries are generated automatically using data from the `Weekly Summary
 4. **Not Authorized to Use the Bot**:
    - Ensure that you have set your ADMIN_ID correctly.
    - Ensure that you have followed the steps in [Configure `.env` File Section](#step-5-configure-env-file)
+
+5. **How to understand the commands?**:
+   - Use `/help` once you start your bot to see a full description of the commands
 
 ---
 
