@@ -127,8 +127,32 @@ If you have any alternatives, you can feel free to do so. You can even use some 
 
 ### Step 6: Install Dependencies
 
-1. Open a terminal in the project folder.
-2. Run the following command:
+To install the required libraries, you will need to first create a virtual environment and then install the dependencies from the `requirements.txt` file.
+
+1. **Create a virtual environment:**
+
+   In your project directory, run the following command to create a virtual environment (you can replace `venv` with any name you prefer):
+
+   ```bash
+   python -m venv venv
+   ```
+
+2. **Activate the virtual environment:**
+
+   - **For Windows (Command Prompt):**
+     ```bash
+     venv\Scripts\activate
+     ```
+
+   - **For macOS/Linux:**
+     ```bash
+     source venv/bin/activate
+     ```
+
+3. **Install dependencies:**
+
+   Once the virtual environment is activated, run:
+
    ```bash
    pip install -r requirements.txt
    ```
