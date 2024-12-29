@@ -566,7 +566,7 @@ async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYP
 
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text("Batch update cancelled.")
+    await update.message.reply_text("Update operation cancelled.")
     return ConversationHandler.END
 
 def run_async(coroutine, *args, **kwargs):
