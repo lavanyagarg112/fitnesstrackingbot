@@ -6,6 +6,10 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
+import asyncio
 
 load_dotenv()
 
@@ -13,6 +17,11 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
 ADMIN_ID = os.getenv('ADMIN_ID')
+TIMEZONE = os.getenv('TIMEZONE')
+if TIMEZONE is None or TIMEZONE == "" or TIMEZONE not in pytz.all_timezones:
+    TIMEZONE = "UTC"
+scheduler = BackgroundScheduler(timezone=pytz.timezone(TIMEZONE))
+scheduler.start()
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -573,6 +582,97 @@ async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Batch update cancelled.")
     return ConversationHandler.END
 
+def run_async(coroutine, *args, **kwargs):
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(coroutine(*args, **kwargs))
+    finally:
+        loop.close()
+
+def daily_reminder_wrapper(chat_id, context):
+    run_async(daily_reminder, chat_id, context)
+
+# Wrapper for water reminder
+def water_reminder_wrapper(chat_id, context):
+    run_async(water_reminder, chat_id, context)
+
+async def daily_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Good evening! Don't forget to update your fitness tracker today. 🏋️‍♂️"
+    )
+
+async def water_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    await context.bot.send_message(
+        chat_id=chat_id,
+        text="Time to hydrate! Drink some water now. 🥤"
+    )
+
+async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    # Add daily reminder
+    scheduler.add_job(
+        daily_reminder_wrapper,
+        CronTrigger(hour=19, minute=0),
+        id=f"daily_reminder_{chat_id}",
+        replace_existing=True,
+        kwargs={"chat_id": chat_id, "context": context},
+    )
+
+    # Add hourly water reminder
+    # for hour in range(7, 24):  # Hours from 7 AM to 11 PM
+    #     scheduler.add_job(
+    #         water_reminder_wrapper,
+    #         CronTrigger(hour=hour, minute=0),  # Hourly triggers
+    #         id=f"water_reminder_{chat_id}_{hour}",
+    #         replace_existing=True,
+    #         kwargs={"context": context},  # Pass context explicitly
+    #         context=chat_id,
+    #     )
+    for minute in range(0, 60, 2):  # Every 2 minutes
+        scheduler.add_job(
+            water_reminder_wrapper,
+            CronTrigger(minute=minute),  # Triggers every 2 minutes
+            id=f"water_reminder_{chat_id}_{minute}",
+            replace_existing=True,
+            kwargs={"chat_id": chat_id, "context": context},
+        )
+
+
+    await update.message.reply_text("Reminders started! You'll get daily reminders at 7:00 PM and hourly water reminders.")
+
+async def stop_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    # Remove reminders
+    try:
+        scheduler.remove_job(f"daily_reminder_{chat_id}")
+    except Exception:
+        pass
+
+    # for hour in range(7, 24):
+    #     try:
+    #         scheduler.remove_job(f"water_reminder_{chat_id}_{hour}")
+    #     except Exception:
+    #         pass
+
+    for minute in range(0, 60, 2):  # Match the testing range
+        try:
+            scheduler.remove_job(f"water_reminder_{chat_id}_{minute}")
+        except Exception:
+            pass
+
+    try:
+        await update.message.reply_text("Reminders stopped!")
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            print("Event loop was closed unexpectedly, retrying in a new loop.")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(update.message.reply_text("Reminders stopped!"))
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text(
        """
@@ -604,6 +704,9 @@ Reminders Management:
 Admin commands:
 /getuserid - Get your user ID
 /cancel - Cancel current operation
+
+You may need to reply to bot's messages in order to reply to the bot, depending on your group settings, \
+as the bot may not be able to read messages without being replied to.
 """
    )
 
@@ -680,6 +783,8 @@ def main():
     application.add_handler(CommandHandler("addcolumns", require_auth()(add_columns)))
     application.add_handler(CommandHandler("weekly", require_auth()(weekly_stats)))
     application.add_handler(CommandHandler("viewgoals", require_auth()(view_goals)))
+    application.add_handler(CommandHandler("startreminders", require_auth()(start_reminders)))
+    application.add_handler(CommandHandler("stopreminders", require_auth()(stop_reminders)))
     application.add_handler(batch_update_handler)
     application.add_handler(add_goal_conv_handler)
     application.add_handler(edit_goal_conv_handler)
