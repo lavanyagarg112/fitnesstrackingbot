@@ -488,22 +488,26 @@ async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.message.reply_text("No columns found in the tracker. Please add columns first.")
         return ConversationHandler.END
 
-    column_list = "\n".join([f"- {column}" for column in columns])
+    # First message: Instructions
     await query.message.reply_text(
-        f"Available columns:\n{column_list}\n\nSend your updates in this format:\n`Column1: Value, Column2: Value, Column3: Value`",
-        parse_mode="Markdown"
+        "Here’s a template you can use to update your data. Copy it, add the relevant data, and send it back."
     )
+
+    # Second message: The actual template
+    template = "\n".join([f"{column}: " for column in columns])
+    await query.message.reply_text(template)
     context.user_data["columns"] = columns
     return INPUT_UPDATES
 
 async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        updates = update.message.text.split(", ")
+        # Parse user input into a dictionary of updates
+        updates = update.message.text.split("\n")
         print('USER INPUT:', updates)
         try:
-            updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates}
+            updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates if ":" in item and item.split(":")[1].strip()}
         except IndexError:
-            await update.message.reply_text("Error: Please use the correct format (e.g., `Column1: Value, Column2: Value`).")
+            await update.message.reply_text("Error: Please use the correct format (e.g., `Column1: Value` on each line).")
             return
 
         name = context.user_data["name"]
@@ -523,13 +527,15 @@ async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYP
         row_to_update = sheet_data[row_index]
 
         while len(row_to_update) < len(headers):
-            row_to_update.append("")  
+            row_to_update.append("")  # Ensure row matches header size
 
+        # Apply updates
         for column, value in updates.items():
             if column in headers:
                 column_index = headers.index(column)
                 sheet_data[row_index][column_index] = value
 
+        # Update the spreadsheet
         service.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range="Daily Tracker!A1:Z",
@@ -542,6 +548,7 @@ async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYP
         await update.message.reply_text(f"Error processing batch update: {e}")
 
     return ConversationHandler.END
+
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("Batch update cancelled.")
