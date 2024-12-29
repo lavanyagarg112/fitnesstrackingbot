@@ -83,7 +83,7 @@ async def select_column(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["column"] = query.data
 
     service = get_sheet_service()
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
     sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
     data = sheet.get('values', [])
     headers = data[0]
@@ -108,7 +108,7 @@ async def update_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = sheet.get('values', [])
     headers = data[0]
     column_index = headers.index(column)
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
 
     row_index = next((i for i, row in enumerate(data) if len(row) > 1 and row[0] == today_date and row[1] == name), None)
     if row_index is None:
@@ -159,7 +159,7 @@ async def view_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
         data = sheet.get('values', [])
         
-        today_date = datetime.now().strftime("%Y-%m-%d")
+        today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
         
         if not data or len(data) < 2:
             await update.message.reply_text("No entries found for today.")
@@ -475,7 +475,6 @@ async def batch_update_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
         return ConversationHandler.END
 
-    # Show names as inline buttons
     names = [row[0] for row in people_data if len(row) > 0]
     keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
     reply_markup = InlineKeyboardMarkup(keyboard)
@@ -490,53 +489,45 @@ async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYP
 
     service = get_sheet_service()
     sheet_response = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
-    sheet_data = sheet_response.get('values', [])  # Ensure sheet_data is always a list
+    sheet_data = sheet_response.get('values', [])
 
-    # Ensure headers are present
     if not sheet_data or len(sheet_data) < 1:
         await query.message.reply_text("No data found in the tracker. Please add headers first.")
         return ConversationHandler.END
 
-    headers = sheet_data[0]  # First row is assumed to be headers
+    headers = sheet_data[0]
 
-    # Validate headers and ensure columns exist
     if len(headers) < 2:
         await query.message.reply_text("No valid headers found in the tracker. Please check your spreadsheet.")
         return ConversationHandler.END
 
     name = context.user_data["name"]
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
 
-    # Fetch rows safely
-    rows = sheet_data[1:]  # All rows excluding headers
+    rows = sheet_data[1:]
     row_index = next(
         (i for i, row in enumerate(rows, 1) if len(row) > 1 and row[0] == today_date and row[1] == name),
         None
     )
 
     if row_index is None:
-        # If no row exists, create a new row
         row_to_update = [today_date, name] + [""] * (len(headers) - 2)
         sheet_data.append(row_to_update)
     else:
         row_to_update = rows[row_index - 1]
 
-    # Extend row if shorter than headers
     while len(row_to_update) < len(headers):
         row_to_update.append("")
 
-    # Generate the template with existing values
-    columns = headers[2:]  # Exclude Date and Name
+    columns = headers[2:]
     template = "\n".join(
         [f"{column}: {row_to_update[headers.index(column)]}" for column in columns]
     )
 
-    # First message: Instructions
     await query.message.reply_text(
         name + ": Here’s a template you can use to update your data. Copy it, add or edit the relevant values, and send it back."
     )
 
-    # Second message: The actual template
     await query.message.reply_text(template)
     context.user_data["sheet_data"] = sheet_data
     context.user_data["row_index"] = len(sheet_data) - 1 if row_index is None else row_index
@@ -547,22 +538,18 @@ async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
-        # Parse user input into a dictionary of updates
         updates = update.message.text.split("\n")
         updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates if ":" in item and item.split(":")[1].strip()}
 
-        # Retrieve the existing sheet data and row index
         sheet_data = context.user_data["sheet_data"]
         row_index = context.user_data["row_index"]
         headers = sheet_data[0]
 
-        # Update the specified columns
         for column, value in updates.items():
             if column in headers:
                 column_index = headers.index(column)
                 sheet_data[row_index][column_index] = value
 
-        # Update the spreadsheet
         service = get_sheet_service()
         service.values().update(
             spreadsheetId=SPREADSHEET_ID,
@@ -595,7 +582,6 @@ def daily_reminder_wrapper(chat_id, context):
     try:
         run_async(daily_reminder, chat_id, context)
     except RuntimeError:
-        # If the event loop is closed, create a new one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -607,7 +593,6 @@ def water_reminder_wrapper(chat_id, context):
     try:
         run_async(water_reminder, chat_id, context)
     except RuntimeError:
-        # If the event loop is closed, create a new one
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
@@ -636,7 +621,6 @@ async def water_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
 async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
-    # Add daily reminder
     scheduler.add_job(
         daily_reminder_wrapper,
         CronTrigger(hour=19, minute=0),
@@ -645,21 +629,11 @@ async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
         kwargs={"chat_id": chat_id, "context": context},
     )
 
-    # Add hourly water reminder
-    # for hour in range(7, 24):  # Hours from 7 AM to 11 PM
-    #     scheduler.add_job(
-    #         water_reminder_wrapper,
-    #         CronTrigger(hour=hour, minute=0),  # Hourly triggers
-    #         id=f"water_reminder_{chat_id}_{hour}",
-    #         replace_existing=True,
-    #         kwargs={"context": context},  # Pass context explicitly
-    #         context=chat_id,
-    #     )
-    for minute in range(0, 60, 2):  # Every 2 minutes
+    for hour in range(7, 24):  # From 7 AM to 11 PM
         scheduler.add_job(
             water_reminder_wrapper,
-            CronTrigger(minute=minute),  # Triggers every 2 minutes
-            id=f"water_reminder_{chat_id}_{minute}",
+            CronTrigger(hour=hour, minute=0),
+            id=f"water_reminder_{chat_id}_{hour}",
             replace_existing=True,
             kwargs={"chat_id": chat_id, "context": context},
         )
@@ -670,21 +644,14 @@ async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def stop_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat_id = update.effective_chat.id
 
-    # Remove reminders
     try:
         scheduler.remove_job(f"daily_reminder_{chat_id}")
     except Exception:
         pass
 
-    # for hour in range(7, 24):
-    #     try:
-    #         scheduler.remove_job(f"water_reminder_{chat_id}_{hour}")
-    #     except Exception:
-    #         pass
-
-    for minute in range(0, 60, 2):  # Match the testing range
+    for hour in range(7, 24):
         try:
-            scheduler.remove_job(f"water_reminder_{chat_id}_{minute}")
+            scheduler.remove_job(f"water_reminder_{chat_id}_{hour}")
         except Exception:
             pass
 
@@ -696,6 +663,28 @@ async def stop_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             loop.run_until_complete(update.message.reply_text("Reminders stopped!"))
+
+async def check_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    active_reminders = []
+    for job in scheduler.get_jobs():
+        if str(chat_id) in job.id:
+            next_run = job.next_run_time
+            if next_run:
+                next_run = next_run.strftime("%Y-%m-%d %H:%M:%S")
+                if "water_reminder" in job.id:
+                    reminder_type = "Water reminder"
+                elif "daily_reminder" in job.id:
+                    reminder_type = "Daily fitness tracker reminder"
+                active_reminders.append(f"{reminder_type}: Next run at {next_run}")
+    
+    if active_reminders:
+        message = "Active reminders:\n" + "\n".join(active_reminders)
+    else:
+        message = "No active reminders found. Use /startreminders to set them up."
+        
+    await update.message.reply_text(message)
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text(
@@ -724,8 +713,10 @@ Goals:
 Reminders Management:
 /startreminders - Daily reminders once to update the sheet and hourly water reminders
 /stopreminders - Stop reminders
+/checkreminders - Check active reminders
 
 Admin commands:
+/checktime - Check the current time in your set timezone
 /getuserid - Get your user ID
 /cancel - Cancel current operation
 
@@ -733,6 +724,12 @@ You may need to reply to bot's messages explicitly in order to reply to the bot,
 as the bot may not be able to read messages without being replied to.
 """
    )
+
+async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    current_time = datetime.now(pytz.timezone(TIMEZONE))
+    await update.message.reply_text(
+        f"Current time in {TIMEZONE}: {current_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
 def require_auth():
     def decorator(func):
@@ -809,6 +806,8 @@ def main():
     application.add_handler(CommandHandler("viewgoals", require_auth()(view_goals)))
     application.add_handler(CommandHandler("startreminders", require_auth()(start_reminders)))
     application.add_handler(CommandHandler("stopreminders", require_auth()(stop_reminders)))
+    application.add_handler(CommandHandler("checktime", require_auth()(check_time)))
+    application.add_handler(CommandHandler("checkreminders", require_auth()(check_reminders)))
     application.add_handler(batch_update_handler)
     application.add_handler(add_goal_conv_handler)
     application.add_handler(edit_goal_conv_handler)
