@@ -455,6 +455,98 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
        "Type /help to see the list of available commands!"
    )
 
+SELECT_NAME, INPUT_UPDATES = range(2)
+
+async def batch_update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    service = get_sheet_service()
+    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet.get('values', [])
+
+    if not people_data:
+        await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
+        return ConversationHandler.END
+
+    # Show names as inline buttons
+    names = [row[0] for row in people_data if len(row) > 0]
+    keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select the person you want to update:", reply_markup=reply_markup)
+    return SELECT_NAME
+
+async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["name"] = query.data
+
+    service = get_sheet_service()
+    sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!1:1").execute()
+    headers = sheet_data.get('values', [[]])[0]
+
+    # Exclude Date and Name columns
+    columns = headers[2:]
+    if not columns:
+        await query.message.reply_text("No columns found in the tracker. Please add columns first.")
+        return ConversationHandler.END
+
+    column_list = "\n".join([f"- {column}" for column in columns])
+    await query.message.reply_text(
+        f"Available columns:\n{column_list}\n\nSend your updates in this format:\n`Column1: Value, Column2: Value, Column3: Value`",
+        parse_mode="Markdown"
+    )
+    context.user_data["columns"] = columns
+    return INPUT_UPDATES
+
+async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        updates = update.message.text.split(", ")
+        print('USER INPUT:', updates)
+        try:
+            updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates}
+        except IndexError:
+            await update.message.reply_text("Error: Please use the correct format (e.g., `Column1: Value, Column2: Value`).")
+            return
+
+        name = context.user_data["name"]
+        today_date = datetime.now().strftime("%Y-%m-%d")
+
+        service = get_sheet_service()
+        sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute().get("values", [])
+        headers = sheet_data[0]
+
+        # Find row to update or create a new one
+        row_index = next((i for i, row in enumerate(sheet_data[1:], 1) if row[0] == today_date and row[1] == name), None)
+        if row_index is None:
+            row_index = len(sheet_data)
+            new_row = [today_date, name] + [""] * (len(headers) - 2)
+            sheet_data.append(new_row)
+
+        row_to_update = sheet_data[row_index]
+
+        while len(row_to_update) < len(headers):
+            row_to_update.append("")  
+
+        for column, value in updates.items():
+            if column in headers:
+                column_index = headers.index(column)
+                sheet_data[row_index][column_index] = value
+
+        service.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Daily Tracker!A1:Z",
+            valueInputOption="RAW",
+            body={"values": sheet_data}
+        ).execute()
+
+        await update.message.reply_text(f"Batch updates successfully saved for {name}.")
+    except Exception as e:
+        await update.message.reply_text(f"Error processing batch update: {e}")
+
+    return ConversationHandler.END
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Batch update cancelled.")
+    return ConversationHandler.END
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text(
        """
@@ -465,6 +557,7 @@ Here are the available commands:
 /viewtoday - View today's stats for all people
 /addcolumns - Add a new column to the sheet
 /update - Update today's data for a person
+/batchupdate - Update today's data for a person in batch
 /weekly - View weekly stats for a person
 /viewgoals - View goals for a person
 /addgoal - Add a new goal for a person
@@ -530,6 +623,15 @@ def main():
         fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
     )
 
+    batch_update_handler = ConversationHandler(
+        entry_points=[CommandHandler("batchupdate", require_auth()(batch_update_start))],
+        states={
+            SELECT_NAME: [CallbackQueryHandler(batch_update_columns)],
+            INPUT_UPDATES: [MessageHandler(filters.TEXT & ~filters.COMMAND, batch_update_process)],
+        },
+        fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+    )
+
     application.add_handler(CommandHandler("start", require_auth()(start)))
     application.add_handler(CommandHandler("help", require_auth()(help_command)))
     application.add_handler(CommandHandler("addnewperson", require_auth()(add_new_person)))
@@ -537,6 +639,7 @@ def main():
     application.add_handler(CommandHandler("addcolumns", require_auth()(add_columns)))
     application.add_handler(CommandHandler("weekly", require_auth()(weekly_stats)))
     application.add_handler(CommandHandler("viewgoals", require_auth()(view_goals)))
+    application.add_handler(batch_update_handler)
     application.add_handler(add_goal_conv_handler)
     application.add_handler(edit_goal_conv_handler)
     application.add_handler(update_conv_handler)
