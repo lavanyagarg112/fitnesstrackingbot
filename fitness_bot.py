@@ -459,8 +459,8 @@ SELECT_NAME, INPUT_UPDATES = range(2)
 
 async def batch_update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     service = get_sheet_service()
-    sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
-    people_data = sheet.get('values', [])
+    sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet_data.get('values', [])
 
     if not people_data:
         await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
@@ -473,69 +473,88 @@ async def batch_update_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text("Select the person you want to update:", reply_markup=reply_markup)
     return SELECT_NAME
 
+
 async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
     context.user_data["name"] = query.data
 
     service = get_sheet_service()
-    sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!1:1").execute()
-    headers = sheet_data.get('values', [[]])[0]
+    sheet_response = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
+    sheet_data = sheet_response.get('values', [])  # Ensure sheet_data is always a list
 
-    # Exclude Date and Name columns
-    columns = headers[2:]
-    if not columns:
-        await query.message.reply_text("No columns found in the tracker. Please add columns first.")
+    # Ensure headers are present
+    if not sheet_data or len(sheet_data) < 1:
+        await query.message.reply_text("No data found in the tracker. Please add headers first.")
         return ConversationHandler.END
+
+    headers = sheet_data[0]  # First row is assumed to be headers
+
+    # Validate headers and ensure columns exist
+    if len(headers) < 2:
+        await query.message.reply_text("No valid headers found in the tracker. Please check your spreadsheet.")
+        return ConversationHandler.END
+
+    name = context.user_data["name"]
+    today_date = datetime.now().strftime("%Y-%m-%d")
+
+    # Fetch rows safely
+    rows = sheet_data[1:]  # All rows excluding headers
+    row_index = next(
+        (i for i, row in enumerate(rows, 1) if len(row) > 1 and row[0] == today_date and row[1] == name),
+        None
+    )
+
+    if row_index is None:
+        # If no row exists, create a new row
+        row_to_update = [today_date, name] + [""] * (len(headers) - 2)
+        sheet_data.append(row_to_update)
+    else:
+        row_to_update = rows[row_index - 1]
+
+    # Extend row if shorter than headers
+    while len(row_to_update) < len(headers):
+        row_to_update.append("")
+
+    # Generate the template with existing values
+    columns = headers[2:]  # Exclude Date and Name
+    template = "\n".join(
+        [f"{column}: {row_to_update[headers.index(column)]}" for column in columns]
+    )
 
     # First message: Instructions
     await query.message.reply_text(
-        "Here’s a template you can use to update your data. Copy it, add the relevant data, and send it back."
+        "Here’s a template you can use to update your data. Copy it, add or edit the relevant values, and send it back."
     )
 
     # Second message: The actual template
-    template = "\n".join([f"{column}: " for column in columns])
     await query.message.reply_text(template)
+    context.user_data["sheet_data"] = sheet_data
+    context.user_data["row_index"] = len(sheet_data) - 1 if row_index is None else row_index
     context.user_data["columns"] = columns
     return INPUT_UPDATES
+
+
 
 async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         # Parse user input into a dictionary of updates
         updates = update.message.text.split("\n")
-        print('USER INPUT:', updates)
-        try:
-            updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates if ":" in item and item.split(":")[1].strip()}
-        except IndexError:
-            await update.message.reply_text("Error: Please use the correct format (e.g., `Column1: Value` on each line).")
-            return
+        updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates if ":" in item and item.split(":")[1].strip()}
 
-        name = context.user_data["name"]
-        today_date = datetime.now().strftime("%Y-%m-%d")
-
-        service = get_sheet_service()
-        sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute().get("values", [])
+        # Retrieve the existing sheet data and row index
+        sheet_data = context.user_data["sheet_data"]
+        row_index = context.user_data["row_index"]
         headers = sheet_data[0]
 
-        # Find row to update or create a new one
-        row_index = next((i for i, row in enumerate(sheet_data[1:], 1) if row[0] == today_date and row[1] == name), None)
-        if row_index is None:
-            row_index = len(sheet_data)
-            new_row = [today_date, name] + [""] * (len(headers) - 2)
-            sheet_data.append(new_row)
-
-        row_to_update = sheet_data[row_index]
-
-        while len(row_to_update) < len(headers):
-            row_to_update.append("")  # Ensure row matches header size
-
-        # Apply updates
+        # Update the specified columns
         for column, value in updates.items():
             if column in headers:
                 column_index = headers.index(column)
                 sheet_data[row_index][column_index] = value
 
         # Update the spreadsheet
+        service = get_sheet_service()
         service.values().update(
             spreadsheetId=SPREADSHEET_ID,
             range="Daily Tracker!A1:Z",
@@ -543,7 +562,7 @@ async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYP
             body={"values": sheet_data}
         ).execute()
 
-        await update.message.reply_text(f"Batch updates successfully saved for {name}.")
+        await update.message.reply_text(f"Batch updates successfully saved for {context.user_data['name']}.")
     except Exception as e:
         await update.message.reply_text(f"Error processing batch update: {e}")
 
