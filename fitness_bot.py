@@ -579,18 +579,16 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
 Here are the available commands:
 
 General:
-
 /start - Start the bot and get a welcome message
 /help - Show this help message
 
 Spreadsheet commands:
-
 /addnewperson - Add a new person to the fitness tracking sheet
 /addcolumns - Add a new column to the sheet
 
 Data tracking:
 /viewtoday - View today's stats for all people
-/update - Update today's data for a person
+/update - Update today's data per column for a person
 /batchupdate - Update today's data for a person in batch
 /weekly - View weekly stats for a person
 
