@@ -131,7 +131,7 @@ To install the required libraries, you will need to first create a virtual envir
 
 1. **Create a virtual environment:**
 
-   In your project directory, run the following command to create a virtual environment (you can replace `venv` with any name you prefer):
+   In your project directory, run the following command to create a virtual environment:
 
    ```bash
    python -m venv venv
