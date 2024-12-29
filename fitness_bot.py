@@ -577,17 +577,34 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text(
        """
 Here are the available commands:
+
+General:
+
 /start - Start the bot and get a welcome message
 /help - Show this help message
+
+Spreadsheet commands:
+
 /addnewperson - Add a new person to the fitness tracking sheet
-/viewtoday - View today's stats for all people
 /addcolumns - Add a new column to the sheet
+
+Data tracking:
+/viewtoday - View today's stats for all people
 /update - Update today's data for a person
 /batchupdate - Update today's data for a person in batch
 /weekly - View weekly stats for a person
+
+Goals:
 /viewgoals - View goals for a person
 /addgoal - Add a new goal for a person
 /editgoal - Edit an existing goal for a person
+
+Reminders Management:
+/startreminders - Daily reminders once to update the sheet and hourly water reminders
+/stopreminders - Stop reminders
+
+Admin commands:
+/getuserid - Get your user ID
 /cancel - Cancel current operation
 """
    )
