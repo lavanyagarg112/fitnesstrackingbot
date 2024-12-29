@@ -4,6 +4,30 @@ This project is a private Telegram bot designed to help users track their fitnes
 
 ---
 
+## Latest: New Features!
+
+### Reminder System
+The bot now includes an automated reminder system with the following commands:
+- `/startreminders`: Start both daily fitness tracking reminders and hourly water reminders
+- `/stopreminders`: Stop all active reminders
+- `/checkreminders`: View all active reminders and their next scheduled times
+- `/checktime`: Check the current time in your configured timezone
+
+To configure timezone, add the following to your `.env` file:
+```env
+TIMEZONE=<Your Timezone>  # e.g., "Asia/Kolkata" or "America/New_York"
+```
+
+### Batch Update System
+The new batch update feature allows you to update multiple metrics at once:
+1. Use `/batchupdate` command
+2. Select the person to update
+3. Receive a template with current values
+4. Edit the values as needed and send back
+5. All values are updated simultaneously
+
+---
+
 ## Features
 
 1. **Daily Tracking**: Update and view daily fitness stats.
