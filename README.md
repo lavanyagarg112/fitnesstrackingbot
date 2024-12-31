@@ -113,7 +113,7 @@ The new batch update feature allows you to update multiple metrics at once:
 #### Getting the Admin ID (If you are using it for a group)
 1. Go to [telegram web](https://web.telegram.org/)
 2. Open the Group you wish to access
-3. In the url, the last part has the format /#<Chat ID>_<Topic ID>
+3. In the url, the last part has the format /#\<Chat ID>_\<Topic ID>
 4. Thus, you have now obtained your Chat ID
 
 #### Getting the Admin ID (if you are using it for individual use)
@@ -131,7 +131,7 @@ To install the required libraries, you will need to first create a virtual envir
 
 1. **Create a virtual environment:**
 
-   In your project directory, run the following command to create a virtual environment (you can replace `venv` with any name you prefer):
+   In your project directory, run the following command to create a virtual environment:
 
    ```bash
    python -m venv venv
