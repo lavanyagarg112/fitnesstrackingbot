@@ -539,7 +539,7 @@ async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYP
 async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
     try:
         updates = update.message.text.split("\n")
-        updates = {item.split(":")[0].strip(): item.split(":")[1].strip() for item in updates if ":" in item and item.split(":")[1].strip()}
+        updates = {item.split(":", 1)[0].strip(): item.split(":", 1)[1].strip() for item in updates if ":" in item and item.split(":", 1)[1].strip()}
 
         sheet_data = context.user_data["sheet_data"]
         row_index = context.user_data["row_index"]
