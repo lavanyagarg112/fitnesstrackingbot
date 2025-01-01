@@ -798,6 +798,17 @@ async def setup_bot():
         per_user=True
     )
 
+    batch_update_handler = ConversationHandler(
+        entry_points=[CommandHandler("batchupdate", require_auth()(batch_update_start))],
+        states={
+            SELECT_NAME: [CallbackQueryHandler(batch_update_columns)],
+            INPUT_UPDATES: [MessageHandler(filters.TEXT & ~filters.COMMAND, batch_update_process)],
+        },
+        fallbacks=[CommandHandler("cancel", require_auth()(cancel))],
+        per_chat=True,
+        per_user=True
+    )
+
     application.add_handler(CommandHandler("start", require_auth()(start)))
     application.add_handler(CommandHandler("help", require_auth()(help_command)))
     application.add_handler(CommandHandler("addnewperson", require_auth()(add_new_person)))
