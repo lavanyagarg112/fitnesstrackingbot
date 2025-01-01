@@ -623,7 +623,7 @@ async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     scheduler.add_job(
         daily_reminder_wrapper,
-        CronTrigger(hour=19, minute=0),
+        CronTrigger(hour=19, minute=0, timezone=pytz.timezone(TIMEZONE)),
         id=f"daily_reminder_{chat_id}",
         replace_existing=True,
         kwargs={"chat_id": chat_id, "context": context},
@@ -632,7 +632,7 @@ async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for hour in range(7, 24):  # From 7 AM to 11 PM
         scheduler.add_job(
             water_reminder_wrapper,
-            CronTrigger(hour=hour, minute=0),
+            CronTrigger(hour=hour, minute=0, timezone=pytz.timezone(TIMEZONE)),
             id=f"water_reminder_{chat_id}_{hour}",
             replace_existing=True,
             kwargs={"chat_id": chat_id, "context": context},
