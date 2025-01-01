@@ -1,3 +1,4 @@
+from fastapi import FastAPI, Request
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import Application, CommandHandler, ContextTypes, CallbackQueryHandler, ConversationHandler, MessageHandler, filters
 from googleapiclient.discovery import build
@@ -6,10 +7,13 @@ from dotenv import load_dotenv
 from datetime import datetime
 import os
 from functools import wraps
+from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.triggers.cron import CronTrigger
+import pytz
 import asyncio
-from fastapi import FastAPI, Request
-import uvicorn
 from contextlib import asynccontextmanager
+
+import uvicorn
 
 load_dotenv()
 
@@ -17,6 +21,11 @@ TELEGRAM_TOKEN = os.getenv('TELEGRAM_API_TOKEN')
 CREDENTIALS_FILE = os.getenv('CREDENTIALS_FILE')
 SPREADSHEET_ID = os.getenv('GOOGLE_SHEET_ID')
 ADMIN_ID = os.getenv('ADMIN_ID')
+TIMEZONE = os.getenv('TIMEZONE')
+if TIMEZONE is None or TIMEZONE == "" or TIMEZONE not in pytz.all_timezones:
+    TIMEZONE = "UTC"
+scheduler = BackgroundScheduler(timezone=pytz.timezone(TIMEZONE))
+scheduler.start()
 
 def get_sheet_service():
     credentials = Credentials.from_service_account_file(CREDENTIALS_FILE)
@@ -78,7 +87,7 @@ async def select_column(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.user_data["column"] = query.data
 
     service = get_sheet_service()
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
     sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
     data = sheet.get('values', [])
     headers = data[0]
@@ -103,7 +112,7 @@ async def update_value(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data = sheet.get('values', [])
     headers = data[0]
     column_index = headers.index(column)
-    today_date = datetime.now().strftime("%Y-%m-%d")
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
 
     row_index = next((i for i, row in enumerate(data) if len(row) > 1 and row[0] == today_date and row[1] == name), None)
     if row_index is None:
@@ -154,7 +163,7 @@ async def view_today(update: Update, context: ContextTypes.DEFAULT_TYPE):
         sheet = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
         data = sheet.get('values', [])
         
-        today_date = datetime.now().strftime("%Y-%m-%d")
+        today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
         
         if not data or len(data) < 2:
             await update.message.reply_text("No entries found for today.")
@@ -459,23 +468,272 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
        "Type /help to see the list of available commands!"
    )
 
+SELECT_NAME, INPUT_UPDATES = range(2)
+
+async def batch_update_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    service = get_sheet_service()
+    sheet_data = service.values().get(spreadsheetId=SPREADSHEET_ID, range="People!A1:A").execute()
+    people_data = sheet_data.get('values', [])
+
+    if not people_data:
+        await update.message.reply_text("No names found in the 'People' sheet. Please add names first.")
+        return ConversationHandler.END
+
+    names = [row[0] for row in people_data if len(row) > 0]
+    keyboard = [[InlineKeyboardButton(name, callback_data=name)] for name in names]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await update.message.reply_text("Select the person you want to update:", reply_markup=reply_markup)
+    return SELECT_NAME
+
+
+async def batch_update_columns(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    context.user_data["name"] = query.data
+
+    service = get_sheet_service()
+    sheet_response = service.values().get(spreadsheetId=SPREADSHEET_ID, range="Daily Tracker!A1:Z").execute()
+    sheet_data = sheet_response.get('values', [])
+
+    if not sheet_data or len(sheet_data) < 1:
+        await query.message.reply_text("No data found in the tracker. Please add headers first.")
+        return ConversationHandler.END
+
+    headers = sheet_data[0]
+
+    if len(headers) < 2:
+        await query.message.reply_text("No valid headers found in the tracker. Please check your spreadsheet.")
+        return ConversationHandler.END
+
+    name = context.user_data["name"]
+    today_date = datetime.now(pytz.timezone(TIMEZONE)).strftime("%Y-%m-%d")
+
+    rows = sheet_data[1:]
+    row_index = next(
+        (i for i, row in enumerate(rows, 1) if len(row) > 1 and row[0] == today_date and row[1] == name),
+        None
+    )
+
+    if row_index is None:
+        row_to_update = [today_date, name] + [""] * (len(headers) - 2)
+        sheet_data.append(row_to_update)
+    else:
+        row_to_update = rows[row_index - 1]
+
+    while len(row_to_update) < len(headers):
+        row_to_update.append("")
+
+    columns = headers[2:]
+    template = "\n".join(
+        [f"{column}: {row_to_update[headers.index(column)]}" for column in columns]
+    )
+
+    await query.message.reply_text(
+        name + ": Here’s a template you can use to update your data. Copy it, add or edit the relevant values, and send it back."
+    )
+
+    await query.message.reply_text(template)
+    context.user_data["sheet_data"] = sheet_data
+    context.user_data["row_index"] = len(sheet_data) - 1 if row_index is None else row_index
+    context.user_data["columns"] = columns
+    return INPUT_UPDATES
+
+
+
+async def batch_update_process(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        updates = update.message.text.split("\n")
+        updates = {item.split(":", 1)[0].strip(): item.split(":", 1)[1].strip() for item in updates if ":" in item and item.split(":", 1)[1].strip()}
+
+        sheet_data = context.user_data["sheet_data"]
+        row_index = context.user_data["row_index"]
+        headers = sheet_data[0]
+
+        for column, value in updates.items():
+            if column in headers:
+                column_index = headers.index(column)
+                sheet_data[row_index][column_index] = value
+
+        service = get_sheet_service()
+        service.values().update(
+            spreadsheetId=SPREADSHEET_ID,
+            range="Daily Tracker!A1:Z",
+            valueInputOption="RAW",
+            body={"values": sheet_data}
+        ).execute()
+
+        await update.message.reply_text(f"Batch updates successfully saved for {context.user_data['name']}.")
+    except Exception as e:
+        await update.message.reply_text(f"Error processing batch update: {e}")
+
+    return ConversationHandler.END
+
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("Update operation cancelled.")
+    return ConversationHandler.END
+
+def run_async(coroutine, *args, **kwargs):
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    
+    return loop.run_until_complete(coroutine(*args, **kwargs))
+
+def daily_reminder_wrapper(chat_id, context):
+    try:
+        run_async(daily_reminder, chat_id, context)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(daily_reminder(chat_id, context))
+        finally:
+            loop.close()
+
+def water_reminder_wrapper(chat_id, context):
+    try:
+        run_async(water_reminder, chat_id, context)
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(water_reminder(chat_id, context))
+        finally:
+            loop.close()
+
+async def daily_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Good evening! Don't forget to update your fitness tracker today. 🏋️‍♂️"
+        )
+    except Exception as e:
+        print(f"Error in daily reminder: {e}")
+
+async def water_reminder(chat_id, context: ContextTypes.DEFAULT_TYPE):
+    try:
+        await context.bot.send_message(
+            chat_id=chat_id,
+            text="Time to hydrate! Drink some water now. 🥤"
+        )
+    except Exception as e:
+        print(f"Error in water reminder: {e}")
+
+async def start_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    scheduler.add_job(
+        daily_reminder_wrapper,
+        CronTrigger(hour=19, minute=0),
+        id=f"daily_reminder_{chat_id}",
+        replace_existing=True,
+        kwargs={"chat_id": chat_id, "context": context},
+    )
+
+    for hour in range(7, 24):  # From 7 AM to 11 PM
+        scheduler.add_job(
+            water_reminder_wrapper,
+            CronTrigger(hour=hour, minute=0),
+            id=f"water_reminder_{chat_id}_{hour}",
+            replace_existing=True,
+            kwargs={"chat_id": chat_id, "context": context},
+        )
+
+
+    await update.message.reply_text("Reminders started! You'll get daily reminders at 7:00 PM and hourly water reminders.")
+
+async def stop_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+
+    try:
+        scheduler.remove_job(f"daily_reminder_{chat_id}")
+    except Exception:
+        pass
+
+    for hour in range(7, 24):
+        try:
+            scheduler.remove_job(f"water_reminder_{chat_id}_{hour}")
+        except Exception:
+            pass
+
+    try:
+        await update.message.reply_text("Reminders stopped!")
+    except RuntimeError as e:
+        if "Event loop is closed" in str(e):
+            print("Event loop was closed unexpectedly, retrying in a new loop.")
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(update.message.reply_text("Reminders stopped!"))
+
+async def check_reminders(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat_id = update.effective_chat.id
+    
+    active_reminders = []
+    for job in scheduler.get_jobs():
+        if str(chat_id) in job.id:
+            next_run = job.next_run_time
+            if next_run:
+                next_run = next_run.strftime("%Y-%m-%d %H:%M:%S")
+                if "water_reminder" in job.id:
+                    reminder_type = "Water reminder"
+                elif "daily_reminder" in job.id:
+                    reminder_type = "Daily fitness tracker reminder"
+                active_reminders.append(f"{reminder_type}: Next run at {next_run}")
+    
+    if active_reminders:
+        message = "Active reminders:\n" + "\n".join(active_reminders)
+    else:
+        message = "No active reminders found. Use /startreminders to set them up."
+        
+    await update.message.reply_text(message)
+
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
    await update.message.reply_text(
        """
 Here are the available commands:
+
+General:
 /start - Start the bot and get a welcome message
 /help - Show this help message
+
+Spreadsheet commands:
 /addnewperson - Add a new person to the fitness tracking sheet
-/viewtoday - View today's stats for all people
 /addcolumns - Add a new column to the sheet
-/update - Update today's data for a person
+
+Data tracking:
+/viewtoday - View today's stats for all people
+/update - Update today's data per column for a person
+/batchupdate - Update today's data for a person in batch
 /weekly - View weekly stats for a person
+
+Goals:
 /viewgoals - View goals for a person
 /addgoal - Add a new goal for a person
 /editgoal - Edit an existing goal for a person
+
+Reminders Management:
+/startreminders - Daily reminders once to update the sheet and hourly water reminders
+/stopreminders - Stop reminders
+/checkreminders - Check active reminders
+
+Admin commands:
+/checktime - Check the current time in your set timezone
+/getuserid - Get your user ID
 /cancel - Cancel current operation
+
+You may need to reply to bot's messages explicitly in order to reply to the bot, depending on your group settings, \
+as the bot may not be able to read messages without being replied to.
 """
    )
+
+async def check_time(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    current_time = datetime.now(pytz.timezone(TIMEZONE))
+    await update.message.reply_text(
+        f"Current time in {TIMEZONE}: {current_time.strftime('%Y-%m-%d %H:%M:%S')}"
+    )
 
 def require_auth():
     def decorator(func):
