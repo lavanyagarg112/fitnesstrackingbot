@@ -4,13 +4,43 @@ This project is a private Telegram bot designed to help users track their fitnes
 
 ---
 
+## Latest: New Features!
+
+### Reminder System
+The bot now includes an automated reminder system with the following commands:
+- `/startreminders`: Start both daily fitness tracking reminders and hourly water reminders
+- `/stopreminders`: Stop all active reminders
+- `/checkreminders`: View all active reminders and their next scheduled times
+- `/checktime`: Check the current time in your configured timezone
+
+To configure timezone, add the following to your `.env` file:
+```env
+TIMEZONE=<Your Timezone>  # e.g., "Asia/Kolkata" or "America/New_York"
+```
+
+### Batch Update System
+The new batch update feature allows you to update multiple metrics at once:
+1. Use `/batchupdate` command
+2. Select the person to update
+3. Receive a template with current values
+4. Edit the values as needed and send back
+5. All values are updated simultaneously
+
+---
+
 ## Features
 
 1. **Daily Tracking**: Update and view daily fitness stats.
 2. **Goal Management**: Add, view, and edit fitness goals.
-3. **Weekly Summaries**: Generate weekly summaries of activities.
+3. **Weekly Summaries**: Generate weekly statistics of activities.
 4. **Group and Individual Use**: Add the bot to your Telegram group or use it personally. You can use it for either one of them, but not both.
 5. **Secure**: No other chat can access your bot, other than your individual chat or group chat.
+6. **Automated Reminders**: 
+   - Daily reminder at 7 PM to update fitness tracker
+   - Hourly water reminders from 7 AM to 11 PM
+   - Easily start/stop reminders with commands
+7. **Batch Updates**: Update multiple fitness metrics at once using a template-based system.
+8. **Timezone Support**: All reminders and timestamps are based on your configured timezone.
 
 ---
 
@@ -73,15 +103,17 @@ This project is a private Telegram bot designed to help users track their fitnes
    CREDENTIALS_FILE=</path/to/json/credentials.json>
    GOOGLE_SHEET_ID=<Your Google Sheet ID>
    ADMIN_ID=<your individual or group chat id>
+   TIMEZONE=<your timezone>
    ```
    - Replace `<Your Telegram Bot Token>` with the token from BotFather.
    - Replace `<Your Google Sheet ID>` with the ID from your Google Sheet URL.
      - Example: If your sheet URL is `https://docs.google.com/spreadsheets/d/abc123/edit`, the ID is `abc123`.
+   - Example for TIMEZONE is 'Asia/Singapore'. If the given timezone is invalid, the application will default to UTC.
 
 #### Getting the Admin ID (If you are using it for a group)
 1. Go to [telegram web](https://web.telegram.org/)
 2. Open the Group you wish to access
-3. In the url, the last part has the format /#<Chat ID>_<Topic ID>
+3. In the url, the last part has the format /#\<Chat ID>_\<Topic ID>
 4. Thus, you have now obtained your Chat ID
 
 #### Getting the Admin ID (if you are using it for individual use)
@@ -95,8 +127,32 @@ If you have any alternatives, you can feel free to do so. You can even use some 
 
 ### Step 6: Install Dependencies
 
-1. Open a terminal in the project folder.
-2. Run the following command:
+To install the required libraries, you will need to first create a virtual environment and then install the dependencies from the `requirements.txt` file.
+
+1. **Create a virtual environment:**
+
+   In your project directory, run the following command to create a virtual environment:
+
+   ```bash
+   python -m venv venv
+   ```
+
+2. **Activate the virtual environment:**
+
+   - **For Windows (Command Prompt):**
+     ```bash
+     venv\Scripts\activate
+     ```
+
+   - **For macOS/Linux:**
+     ```bash
+     source venv/bin/activate
+     ```
+
+3. **Install dependencies:**
+
+   Once the virtual environment is activated, run:
+
    ```bash
    pip install -r requirements.txt
    ```
@@ -113,7 +169,7 @@ If you have any alternatives, you can feel free to do so. You can even use some 
 
 ## Weekly Summaries
 
-Weekly summaries are generated automatically using data from the `Weekly Summary` tab in your Google Sheet. No additional code is required for this feature. Ensure your Google Sheet follows the structure of the provided `sample_sheet.xlsx`.
+Weekly summaries are generated using data from the `Weekly Summary` tab in your Google Sheet. No additional code is required for this feature. Ensure your Google Sheet follows the structure of the provided `sample_sheet.xlsx`.
 
 ---
 
@@ -143,6 +199,9 @@ Weekly summaries are generated automatically using data from the `Weekly Summary
 4. **Not Authorized to Use the Bot**:
    - Ensure that you have set your ADMIN_ID correctly.
    - Ensure that you have followed the steps in [Configure `.env` File Section](#step-5-configure-env-file)
+
+5. **How to understand the commands?**:
+   - Use `/help` once you start your bot to see a full description of the commands
 
 ---
 
