@@ -169,7 +169,7 @@ To install the required libraries, you will need to first create a virtual envir
 
 ## Weekly Summaries
 
-Weekly summaries are generated automatically using data from the `Weekly Summary` tab in your Google Sheet. No additional code is required for this feature. Ensure your Google Sheet follows the structure of the provided `sample_sheet.xlsx`.
+Weekly summaries are generated using data from the `Weekly Summary` tab in your Google Sheet. No additional code is required for this feature. Ensure your Google Sheet follows the structure of the provided `sample_sheet.xlsx`.
 
 ---
 
